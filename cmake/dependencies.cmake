@@ -1,18 +1,28 @@
 include(FetchContent)
 
-if (NOT GRPCXX_USE_ASIO)
-	# libuv
-	FetchContent_Declare(libuv
-		URL      https://github.com/libuv/libuv/archive/refs/tags/v1.46.0.tar.gz
-		URL_HASH SHA256=7aa66be3413ae10605e1f5c9ae934504ffe317ef68ea16fdaa83e23905c681bd
-	)
+option(HERMETIC_BUILD "Fetch and build all dependencies instead of relying on system libraries" ON)
 
-	set(LIBUV_BUILD_SHARED OFF CACHE BOOL "Build libuv shared lib")
-	FetchContent_MakeAvailable(libuv)
-	add_library(libuv::uv ALIAS uv_a)
+if(NOT GRPCXX_USE_ASIO)
+	if(HERMETIC_BUILD)
+		# libuv
+		FetchContent_Declare(libuv
+			URL      https://github.com/libuv/libuv/archive/refs/tags/v1.46.0.tar.gz
+			URL_HASH SHA256=7aa66be3413ae10605e1f5c9ae934504ffe317ef68ea16fdaa83e23905c681bd
+		)
+
+		set(LIBUV_BUILD_SHARED OFF CACHE BOOL "Build libuv shared lib")
+		FetchContent_MakeAvailable(libuv)
+		install(TARGETS uv_a EXPORT grpcxx COMPONENT Development)
+		add_library(libuv::uv ALIAS uv_a)
+	else()
+		find_package(PkgConfig REQUIRED)
+		pkg_check_modules(uv REQUIRED IMPORTED_TARGET "libuv>=1.44")
+		add_library(libuv::uv ALIAS PkgConfig::uv)
+	endif()
 else()
 	# asio
 	add_library(asio INTERFACE)
+	install(TARGETS asio EXPORT grpcxx COMPONENT Development)
 
 	find_package(Boost 1.81)
 	if (Boost_FOUND)
@@ -52,7 +62,7 @@ else()
 			endif()
 		endif()
 
-		if (NOT Asio_FOUND)
+		if (NOT Asio_FOUND AND HERMETIC_BUILD)
 			FetchContent_Declare(asio
 				URL      https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-29-0.tar.gz
 				URL_HASH SHA256=44305859b4e6664dbbf853c1ef8ca0259d694f033753ae309fcb2534ca20f721
@@ -73,30 +83,41 @@ else()
 endif()
 
 # nghttp2
-FetchContent_Declare(nghttp2
-	URL      https://github.com/nghttp2/nghttp2/releases/download/v1.55.1/nghttp2-1.55.1.tar.xz
-	URL_HASH SHA256=19490b7c8c2ded1cf7c3e3a54ef4304e3a7876ae2d950d60a81d0dc6053be419
-)
+if(NOT HERMETIC_BUILD)
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(nghttp2 REQUIRED IMPORTED_TARGET "libnghttp2>=1.55.1")
+	add_library(libnghttp2::nghttp2 ALIAS PkgConfig::nghttp2)
+else()
+	FetchContent_Declare(nghttp2
+		URL      https://github.com/nghttp2/nghttp2/releases/download/v1.55.1/nghttp2-1.55.1.tar.xz
+		URL_HASH SHA256=19490b7c8c2ded1cf7c3e3a54ef4304e3a7876ae2d950d60a81d0dc6053be419
+	)
 
-set(ENABLE_LIB_ONLY   ON  CACHE BOOL "Build libnghttp2 only")
-set(ENABLE_STATIC_LIB ON  CACHE BOOL "Build libnghttp2 in static mode")
-set(ENABLE_SHARED_LIB OFF CACHE BOOL "Build libnghttp2 as a shared library")
-set(ENABLE_DOC        OFF CACHE BOOL "Build libnghttp2 documentation")
+	set(ENABLE_LIB_ONLY   ON  CACHE BOOL "Build libnghttp2 only")
+	set(ENABLE_STATIC_LIB ON  CACHE BOOL "Build libnghttp2 in static mode")
+	set(ENABLE_SHARED_LIB OFF CACHE BOOL "Build libnghttp2 as a shared library")
+	set(ENABLE_DOC        OFF CACHE BOOL "Build libnghttp2 documentation")
 
-FetchContent_MakeAvailable(nghttp2)
+	FetchContent_MakeAvailable(nghttp2)
+	target_include_directories(nghttp2_static
+		PUBLIC
+			$<BUILD_INTERFACE:${nghttp2_SOURCE_DIR}/lib/includes>
+	)
 
-target_include_directories(nghttp2_static
-	PUBLIC
-		$<BUILD_INTERFACE:${nghttp2_SOURCE_DIR}/lib/includes>
-)
-add_library(libnghttp2::nghttp2 ALIAS nghttp2_static)
+	install(TARGETS nghttp2_static EXPORT grpcxx COMPONENT Development)
+	add_library(libnghttp2::nghttp2 ALIAS nghttp2_static)
+endif()
 
 # protobuf
 find_package(Protobuf 3.15.0 REQUIRED)
 
-# fmt
-FetchContent_Declare(fmt
-	URL      https://github.com/fmtlib/fmt/archive/refs/tags/10.1.1.tar.gz
-	URL_HASH SHA256=78b8c0a72b1c35e4443a7e308df52498252d1cefc2b08c9a97bc9ee6cfe61f8b
-)
-FetchContent_MakeAvailable(fmt)
+if(NOT HERMETIC_BUILD)
+	find_package(fmt 10.1.1 REQUIRED)
+else()
+	# fmt
+	FetchContent_Declare(fmt
+		URL      https://github.com/fmtlib/fmt/archive/refs/tags/10.1.1.tar.gz
+		URL_HASH SHA256=78b8c0a72b1c35e4443a7e308df52498252d1cefc2b08c9a97bc9ee6cfe61f8b
+	)
+	FetchContent_MakeAvailable(fmt)
+endif()

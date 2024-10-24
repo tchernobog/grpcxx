@@ -94,3 +94,10 @@ else()
 			GRPCXX_USE_ASIO
 	)
 endif()
+
+include(GNUInstallDirs)
+install(TARGETS grpcxx EXPORT grpcxx
+		LIBRARY COMPONENT Runtime
+        FILE_SET headers
+        	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/grpcxx
+			COMPONENT Development)

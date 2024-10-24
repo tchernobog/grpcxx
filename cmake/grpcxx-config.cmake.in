@@ -1,0 +1,7 @@
+include(${CMAKE_CURRENT_LIST_DIR}/grpcxx-version.cmake)
+
+@PACKAGE_INIT@
+
+if(NOT grpcxx::grpcxx)
+    include(${CMAKE_CURRENT_LIST_DIR}/grpcxx-targets.cmake)
+endif()
