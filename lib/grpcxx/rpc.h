@@ -3,12 +3,40 @@
 #include "fixed_string.h"
 #include "status.h"
 
+#include <concepts>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 
 namespace grpcxx {
+namespace concepts {
+template <typename T>
+concept rpc_type = requires(T t) {
+	// Method
+	T::method;
+	requires std::same_as<std::remove_cv_t<decltype(T::method)>, std::string_view>;
+
+	// Request
+	typename T::request_type;
+	{ t.map_request(std::declval<std::string_view>()) } -> std::same_as<typename T::request_type>;
+
+	// Response
+	typename T::response_type;
+	typename T::optional_response_type;
+	{
+		t.map_response(std::declval<const typename T::optional_response_type &>())
+	} -> std::same_as<std::string>;
+
+	// Result
+	typename T::result_type;
+	requires requires(typename T::result_type t) {
+		{ t.status } -> std::same_as<grpcxx::status &>;
+		{ t.response } -> std::same_as<typename T::optional_response_type &>;
+	};
+};
+} // namespace concepts
+
 template <fixed_string M, typename T, typename U> struct rpc {
 	static constexpr std::string_view method{M};
 

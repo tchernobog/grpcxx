@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../rpc.h"
-#include "../service.h"
 
 #include "coroutine.h"
 #include "loop.h"
