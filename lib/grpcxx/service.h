@@ -21,13 +21,13 @@ concept rpc_type = requires(T t) {
 
 	// Request
 	typename T::request_type;
-	{ t.map(std::declval<std::string_view>()) } -> std::same_as<typename T::request_type>;
+	{ t.map_request(std::declval<std::string_view>()) } -> std::same_as<typename T::request_type>;
 
 	// Response
 	typename T::response_type;
 	typename T::optional_response_type;
 	{
-		t.map(std::declval<const typename T::optional_response_type &>())
+		t.map_response(std::declval<const typename T::optional_response_type &>())
 	} -> std::same_as<std::string>;
 
 	// Result
@@ -54,10 +54,10 @@ public:
 									&rpc](context &ctx, std::string_view data) -> response_t {
 						using type = std::remove_cvref_t<decltype(rpc)>;
 
-						auto req    = rpc.map(data);
+						auto req    = rpc.map_request(data);
 						auto result = std::invoke(&I::template call<type>, impl, ctx, req);
 
-						return {result.status, rpc.map(result.response)};
+						return {result.status, rpc.map_response(result.response)};
 					};
 
 					_handlers.insert({rpc.method, handler});

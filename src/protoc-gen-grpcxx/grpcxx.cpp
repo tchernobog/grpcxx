@@ -5,6 +5,7 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream.h>
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -20,32 +21,50 @@ bool Grpcxx::Generate(
 
 #pragma once
 
+#include <grpcxx/client.h>
 #include <grpcxx/rpc.h>
 #include <grpcxx/service.h>
 
 #include "{3}"
+
 )",
 		PLUGIN_NAME,
 		PLUGIN_VERSION,
 		file->name(),
 		google::protobuf::compiler::StripProto(file->name()) + ".pb.h");
 
-	if (!file->package().empty()) {
-		output += '\n';
+	std::string ns = ReplaceString(file->package(), ".", "::");
 
-		std::size_t start = 0;
-		for (auto end = file->package().find('.'); end != std::string::npos;
-			 end      = file->package().find('.', start)) {
-
-			output += fmt::format("namespace {} {{\n", file->package().substr(start, end - start));
-			start   = end + 1;
-		}
-		output += fmt::format("namespace {} {{\n", file->package().substr(start));
+	// Output optional namespace
+	if (!ns.empty()) {
+		output += fmt::format("namespace {} {{\n\n", ns);
 	}
+
+	GenerateService(file, parameter, context, error, output);
+	GenerateClientStub(file, parameter, context, error, output);
+
+	// Close namespace if needed
+	if (!ns.empty()) {
+		output += fmt::format("}} // ~ namespace {}\n", ns);
+	}
+
+	std::unique_ptr<google::protobuf::io::ZeroCopyOutputStream> ostream(
+		context->Open(google::protobuf::compiler::StripProto(file->name()) + ".grpcxx.pb.h"));
+
+	google::protobuf::io::CodedOutputStream costream(ostream.get());
+	costream.WriteRaw(output.data(), output.size());
+
+	return true;
+}
+
+bool Grpcxx::GenerateService(
+	const google::protobuf::FileDescriptor *file, const std::string &parameter,
+	google::protobuf::compiler::GeneratorContext *context, std::string *error,
+	std::string &output) const {
 
 	for (int i = 0; i < file->service_count(); i++) {
 		auto service  = file->service(i);
-		output       += fmt::format("namespace {} {{\n", service->name());
+		output       += fmt::format("namespace {} {{\n\n", service->name());
 
 		std::string tmp = fmt::format(
 			"using Service = grpcxx::service<\"{}{}{}\"",
@@ -54,33 +73,12 @@ bool Grpcxx::Generate(
 			service->name());
 
 		for (int j = 0; j < service->method_count(); j++) {
-			auto method = service->method(j);
-
-			// Map proto types to c++ types
-			// e.g. `google.protobuf.Empty` -> `google::protobuf::Empty`
-			auto mapper = [&file](const google::protobuf::Descriptor *t) -> std::string {
-				auto name = t->full_name();
-				if (!file->package().empty() && name.starts_with(file->package())) {
-					name = name.substr(file->package().size() + 1);
-				}
-
-				std::string result;
-				std::size_t start = 0;
-				for (auto end = name.find('.'); end != std::string::npos;
-					 end      = name.find('.', start)) {
-					result += name.substr(start, end - start) + "::";
-					start   = end + 1;
-				}
-				result += name.substr(start);
-
-				return result;
-			};
-
-			output += fmt::format(
-				"using rpc{0} = grpcxx::rpc<\"{0}\", {1}, {2}>;\n\n",
-				method->name(),
-				mapper(method->input_type()),
-				mapper(method->output_type()));
+			auto method  = service->method(j);
+			output      += fmt::format(
+                "using rpc{0} = grpcxx::rpc<\"{0}\", {1}, {2}>;\n\n",
+                method->name(),
+                MapToCppType(file, method->input_type()),
+                MapToCppType(file, method->output_type()));
 
 			tmp += fmt::format(", rpc{}", method->name());
 		}
@@ -93,27 +91,80 @@ bool Grpcxx::Generate(
 		return {grpcxx::status::code_t::unimplemented, std::nullopt};
 	}
 };
+
 )";
-		output += fmt::format("}} // namespace {}\n", service->name());
+		output += fmt::format("}} // ~ namespace {}\n", service->name());
 	}
-
-	if (!file->package().empty()) {
-		auto end = file->package().size();
-		for (auto pos = file->package().rfind('.'); pos != std::string::npos;
-			 pos      = file->package().rfind('.', end)) {
-
-			output +=
-				fmt::format("}} // namespace {}\n", file->package().substr(pos + 1, end - pos));
-			end = pos - 1;
-		}
-		output += fmt::format("}} // namespace {}\n", file->package().substr(0, end + 1));
-	}
-
-	std::unique_ptr<google::protobuf::io::ZeroCopyOutputStream> ostream(
-		context->Open(google::protobuf::compiler::StripProto(file->name()) + ".grpcxx.pb.h"));
-
-	google::protobuf::io::CodedOutputStream costream(ostream.get());
-	costream.WriteRaw(output.data(), output.size());
 
 	return true;
+}
+
+bool Grpcxx::GenerateClientStub(
+	const google::protobuf::FileDescriptor *file, const std::string &parameter,
+	google::protobuf::compiler::GeneratorContext *context, std::string *error,
+	std::string &output) const {
+
+	for (int i = 0; i < file->service_count(); i++) {
+		auto              service           = file->service(i);
+		const std::string client_class_name = service->name() + "Client";
+
+		std::string methods;
+		for (int j = 0; j < service->method_count(); j++) {
+			auto method = service->method(j);
+
+			const std::string rpc_name  = fmt::format("{}::rpc{}", service->name(), method->name());
+			methods                    += fmt::format(
+                R"(
+	[[nodiscard]]
+	auto {0}(const {1}::request_type& req) 
+		-> {1}::result_type 
+	{{ 
+		return send<{1}>(req); 
+	}}
+	)",
+                method->name(),
+                rpc_name);
+		}
+
+		// Output the class definitionq
+		output += fmt::format(
+			R"(
+class {} : public ::grpcxx::client {{
+public:
+	// Methods
+{}
+}}; // ~ class {}
+
+)",
+			client_class_name,
+			methods,
+			client_class_name);
+	}
+
+	return true;
+}
+
+auto Grpcxx::MapToCppType(
+	const google::protobuf::FileDescriptor *file, const google::protobuf::Descriptor *t)
+	-> std::string {
+
+	// Map proto types to c++ types
+	// e.g. `google.protobuf.Empty` -> `google::protobuf::Empty`
+	auto name = t->full_name();
+	if (!file->package().empty() && name.starts_with(file->package())) {
+		name = name.substr(file->package().size() + 1);
+	}
+
+	return ReplaceString(name, ".", "::");
+}
+
+auto Grpcxx::ReplaceString(std::string input, std::string_view search, std::string_view replace)
+	-> std::string {
+	std::size_t start = 0;
+	while ((start = input.find(search, start)) != std::string::npos) {
+		input.replace(start, search.size(), replace);
+		start += search.size();
+	}
+
+	return input;
 }

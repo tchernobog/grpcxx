@@ -15,6 +15,7 @@ target_sources(grpcxx
 		FILE_SET headers TYPE HEADERS
 		BASE_DIRS ..
 		FILES
+			client.h
 			context.h
 			fixed_string.h
 			rpc.h
@@ -43,6 +44,7 @@ if (NOT GRPCXX_USE_ASIO)
 			FILE_SET headers TYPE HEADERS
 			BASE_DIRS ..
 			FILES
+				uv/client.h
 				uv/loop.h
 				uv/server.h
 				uv/scheduler.h

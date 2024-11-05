@@ -22,39 +22,55 @@ template <fixed_string M, typename T, typename U> struct rpc {
 		optional_response_type response;
 	};
 
-	request_type map(std::string_view data) const {
-		constexpr bool can_map = requires(request_type t) {
+private:
+	template <typename W> W map(std::string_view data) const {
+		constexpr bool can_map = requires(W t) {
 			{
 				t.ParseFromArray(std::declval<const char *>(), std::declval<std::size_t>())
 			} -> std::same_as<bool>;
 		};
 		static_assert(can_map, "No known method to deserialize data");
 
-		request_type req;
+		W ret;
 
-		if (!req.ParseFromArray(data.data(), data.size())) {
+		if (!ret.ParseFromArray(data.data(), data.size())) {
 			throw std::runtime_error("Failed to deserialize data");
 		}
 
-		return req;
+		return ret;
 	}
 
-	std::string map(const optional_response_type &res) const {
-		constexpr bool can_map = requires(response_type t) {
+	template <typename W> std::string map(const std::optional<W> &ret) const {
+		constexpr bool can_map = requires(W t) {
 			{ t.SerializeToString(std::declval<std::string *>()) } -> std::same_as<bool>;
 		};
 		static_assert(can_map, "No known method to serialize data");
 
-		if (!res) {
+		if (!ret) {
 			return {};
 		}
 
 		std::string data;
-		if (!res->SerializeToString(&data)) {
+		if (!ret->SerializeToString(&data)) {
 			throw std::runtime_error("Failed to serialize data");
 		}
 
 		return data;
+	}
+
+public:
+	request_type map_request(std::string_view data) const {
+		return map<request_type>(std::move(data));
+	}
+
+	std::string map_request(const request_type &data) const { return map<request_type>(data); }
+
+	response_type map_response(std::string_view data) const {
+		return map<response_type>(std::move(data));
+	}
+
+	std::string map_response(const optional_response_type &ret) const {
+		return map<response_type>(ret);
 	}
 };
 } // namespace grpcxx

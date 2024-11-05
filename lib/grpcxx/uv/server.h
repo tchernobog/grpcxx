@@ -73,13 +73,13 @@ private:
 	static constexpr int      TCP_LISTEN_BACKLOG         = 128;
 	static constexpr uint64_t SHUTDOWN_CHECK_INTERVAL_MS = 100;
 
-	static void conn_cb(uv_stream_t *stream, int status);
-
 	void start_listening();
 
 	void setup_stop_timer(std::stop_token stop_token) noexcept;
 
 	detail::coroutine conn(uv_stream_t *stream);
+
+	static void conn_cb(uv_stream_t *stream, int status);
 
 	detail::loop_t  _loop;
 	uv_tcp_t        _handle;
