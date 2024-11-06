@@ -23,6 +23,7 @@ target_sources(grpcxx
 			server_base.h
 			service.h
 			status.h
+			stream.h
 	PRIVATE
 		FILE_SET private_headers TYPE HEADERS
 		FILES
@@ -34,6 +35,7 @@ target_sources(grpcxx
 if (NOT GRPCXX_USE_ASIO)
 	target_sources(grpcxx
 		PRIVATE
+			uv/client.cpp
 			uv/conn.cpp
 			uv/loop.cpp
 			uv/reader.cpp

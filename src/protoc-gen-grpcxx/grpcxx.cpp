@@ -112,18 +112,42 @@ bool Grpcxx::GenerateClientStub(
 		for (int j = 0; j < service->method_count(); j++) {
 			auto method = service->method(j);
 
-			const std::string rpc_name  = fmt::format("{}::rpc{}", service->name(), method->name());
-			methods                    += fmt::format(
-                R"(
+			const std::string rpc_name = fmt::format("{}::rpc{}", service->name(), method->name());
+			std::string       input_type;
+			if (method->client_streaming()) {
+				input_type = fmt::format("stream<typename {}::request_type>", rpc_name);
+			} else {
+				input_type = fmt::format("typename {}::request_type", rpc_name);
+			}
+
+			std::string return_type;
+			if (method->server_streaming()) {
+				return_type = fmt::format("stream<typename {}::response_type>", rpc_name);
+			} else {
+				return_type = fmt::format("typename {}::result_type", rpc_name);
+			}
+
+			std::string delegate = "send";
+			if (method->server_streaming() && method->client_streaming()) {
+				delegate = "send_bidi";
+			} else if (method->server_streaming() || method->client_streaming()) {
+				delegate = "send_stream";
+			}
+
+			methods += fmt::format(
+				R"(
 	[[nodiscard]]
-	auto {0}(const {1}::request_type& req) 
-		-> {1}::result_type 
+	auto {0}(const {1}& req) 
+		-> {2}
 	{{ 
-		return send<{1}>(req); 
+		return {3}<{4}>(req); 
 	}}
 	)",
-                method->name(),
-                rpc_name);
+				method->name(),
+				input_type,
+				return_type,
+				delegate,
+				rpc_name);
 		}
 
 		// Output the class definitionq

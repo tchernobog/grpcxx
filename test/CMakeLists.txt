@@ -31,7 +31,7 @@ foreach(proto IN LISTS proto_files)
                     "--grpcxx_out=${destdir}"
                     "--plugin=$<TARGET_FILE:protoc-gen-grpcxx>"
                     ${CMAKE_CURRENT_SOURCE_DIR}/${proto}
-        DEPENDS protobuf::protoc
+        DEPENDS $<TARGET_FILE:protobuf::protoc>
         COMMENT "Generating sources from ${proto}"
         VERBATIM
     )
